@@ -1,16 +1,17 @@
 "use client";
 
-import { GetBalanceStatsResponseType } from "@/app/api/stats/balance/route";
-import { GetCategoriesStatsResponseType } from "@/app/api/stats/categories/route";
-import SekeletonWrapper from "@/components/SekeletonWrapper";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { DateToUTCDate, GetFormatterForCurrency } from "@/lib/helpers";
-import { TransactionType } from "@/lib/type";
+import React, { useMemo, useCallback } from "react";
 import { UserSettings } from "@prisma/client";
 import { useQuery } from "@tanstack/react-query";
-import React, { useMemo } from "react";
+
+import { DateToUTCDate, GetFormatterForCurrency } from "@/lib/helpers";
+import { GetCategoriesStatsResponseType } from "@/app/api/stats/categories/route";
+
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Progress } from "@/components/ui/progress";
+import SkeletonWrapper from "@/components/SekeletonWrapper";
+import { TransactionType } from "@/lib/type";
 
 interface Props {
   from: Date;
@@ -19,7 +20,7 @@ interface Props {
 }
 
 function CategoriesStats({ userSettings, from, to }: Props) {
-  const statsQuery = useQuery<GetBalanceStatsResponseType>({
+  const statsQuery = useQuery<GetCategoriesStatsResponseType>({
     queryKey: ["overview", "stats", "categories", from, to],
     queryFn: () =>
       fetch(
@@ -27,29 +28,31 @@ function CategoriesStats({ userSettings, from, to }: Props) {
           to
         )}`
       ).then((res) => res.json()),
+    refetchOnWindowFocus: false,
   });
 
+  // shouldn't recalculate on every render unless the currency changes
   const formatter = useMemo(() => {
     return GetFormatterForCurrency(userSettings.currency);
   }, [userSettings.currency]);
 
   return (
-    <div className="flex w-full flex-wrap gap-2 md:flex-nowrap">
-      <SekeletonWrapper isLoading={statsQuery.isFetching}>
+    <div className="w-full flex flex-wrap gap-2 md:flex-nowrap">
+      <SkeletonWrapper isLoading={statsQuery.isFetching}>
         <CategoriesCard
           formatter={formatter}
           type="income"
           data={statsQuery.data || []}
         />
-      </SekeletonWrapper>
+      </SkeletonWrapper>
 
-      <SekeletonWrapper isLoading={statsQuery.isFetching}>
+      <SkeletonWrapper isLoading={statsQuery.isFetching}>
         <CategoriesCard
           formatter={formatter}
           type="expense"
           data={statsQuery.data || []}
         />
-      </SekeletonWrapper>
+      </SkeletonWrapper>
     </div>
   );
 }
@@ -58,43 +61,41 @@ export default CategoriesStats;
 
 function CategoriesCard({
   data,
-  formatter,
   type,
+  formatter,
 }: {
   type: TransactionType;
   formatter: Intl.NumberFormat;
   data: GetCategoriesStatsResponseType;
 }) {
-  const filteredData = data.filter((d) => d.type === type);
+  const filteredData = data.filter((item) => item.type === type);
   const total = filteredData.reduce(
-    (acc, curr) => acc + (curr._sum?.amount || 0),
+    (acc, item) => acc + (item._sum?.amount || 0),
     0
   );
 
   return (
-    <Card className="h-80 w-full">
+    <Card className="h-80 w-full col-span-6">
       <CardHeader>
-        <CardTitle className="grid grid-flow-row justify-between gap-2 text-muted-foreground md:grid-flow-col">
-          {type === "income" ? "Income" : "Expense"} Categories
+        <CardTitle className="grid grid-flow-row justify-between gap-2 md:grid-flow-col text-muted-foreground">
+          {type === "income" ? "Incomes" : "Expenses"} by Category
         </CardTitle>
       </CardHeader>
 
-      <div className="flex items-center justify-center gap-2">
-        {filteredData.length === 0 && (
-          <div className="flex h-60 w-full flex-col items-center justify-center">
+      <div className="flex items-center justify-between gap-2">
+        {filteredData.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-60 w-full">
             No data for the selected period
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground tex-sm">
               Try selecting a different period or try adding new{" "}
-              {type === "income" ? "income" : "expense"} transactions
+              {type === "income" ? "incomes" : "expenses"}
             </p>
           </div>
-        )}
-
-        {filteredData.length > 0 && (
-          <ScrollArea className="w-full h-60 px-4">
-            <div className="flex w-full flex-col gap-4 p-4">
+        ) : (
+          <ScrollArea className="h-60 w-full px-4">
+            <div className="flex flex-col gap-4 p-4">
               {filteredData.map((item) => {
-                const amount = item._sum?.amount || 0;
+                const amount = item._sum.amount || 0;
                 const percentage = (amount * 100) / (total || amount);
 
                 return (
@@ -115,7 +116,7 @@ function CategoriesCard({
                     <Progress
                       value={percentage}
                       indicator={
-                        type === "income" ? "bg-emerald-500" : "bg-rose-500"
+                        type === "income" ? "bg-emerald-500" : "bg-red-500"
                       }
                     />
                   </div>
